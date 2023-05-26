@@ -27,13 +27,13 @@ from sklearn.metrics import confusion_matrix
 # Read the CSV file into a DataFrame
 df = pd.read_csv("/kaggle/input/icr-identify-age-related-conditions/train.csv")
 
-# Drop rows with missing values
-new_df = df.dropna()
+# Fill missing values with the mean
+df.fillna(df.mean(), inplace=True)
 
 # Split the data into input features (x) and labels (y)
 # and drop non-numeric values
-x = new_df.drop(['Id', 'Class', 'EJ'], axis=1)
-y = new_df['Class']
+x = df.drop(['Id', 'Class', 'EJ'], axis=1)
+y = df['Class']
 
 # Split the data into training and testing sets
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, stratify=y, random_state=0)
@@ -90,8 +90,8 @@ plt.ylabel('Actual label')
 # Read the test data from a CSV file
 test_df = pd.read_csv("/kaggle/input/icr-identify-age-related-conditions/test.csv")
 
-# Drop any missing values from the test data
-test_df = test_df.dropna()
+# Fill missing values with the mean
+test_df.fillna(df.mean(), inplace=True)
 
 # Extract the features (input data) from the test data
 test_x = test_df.drop(['Id', 'EJ'], axis=1)
@@ -107,7 +107,11 @@ rounded_predictions = np.round(predictions.flatten(), decimals=1)
 rounded_class_0 = np.round(1 - predictions.flatten(), decimals=1)
 
 # Create a DataFrame for the rounded predictions
-pred_df = pd.DataFrame({'Id': test_df['Id'], 'class_0': rounded_class_0, 'class_1': rounded_predictions})
-
+#pred_df = pd.DataFrame({'Id': test_df['Id'], 'class_0': rounded_class_0, 'class_1': rounded_predictions})
+#Implementing suggested solution for how to write submission file
+sample = pd.read_csv('/kaggle/input/icr-identify-age-related-conditions/sample_submission.csv')
+sample['class_1'] = rounded_predictions
+sample['class_0'] = rounded_class_0
+sample.to_csv('submission.csv', index = False)
 # Write the predictions to a CSV file
-pred_df.to_csv('submission.csv', index=False)
+#pred_df.to_csv('submission.csv', index=False)
