@@ -46,7 +46,7 @@ model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy']
 model.summary()
 
 # Train the model
-hist = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=10, batch_size=100)
+hist = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=20, batch_size=100)
 
 # Print training accuracy
 print(hist.history['accuracy'])
@@ -102,11 +102,12 @@ predictions = model.predict(test_x)
 # Print the predicted labels
 print(predictions)
 
+# Round the probability values to one decimal place
+rounded_predictions = np.round(predictions.flatten(), decimals=1)
+rounded_class_0 = np.round(1 - predictions.flatten(), decimals=1)
 
-# Create a DataFrame for the predictions
-pred_df = pd.DataFrame({'Id': test_df['Id'], 'class_0': 1 - predictions.flatten(), 'class_1': predictions.flatten()})
+# Create a DataFrame for the rounded predictions
+pred_df = pd.DataFrame({'Id': test_df['Id'], 'class_0': rounded_class_0, 'class_1': rounded_predictions})
 
 # Write the predictions to a CSV file
 pred_df.to_csv('submission.csv', index=False)
-
-
