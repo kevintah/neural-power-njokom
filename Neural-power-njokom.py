@@ -16,10 +16,31 @@ for dirname, _, filenames in os.walk('/kaggle/input'):
 # You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
 # You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
 
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.preprocessing import StandardScaler
 from keras.models import Sequential
 from keras.layers import Dense
+from keras.callbacks import EarlyStopping
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
@@ -35,18 +56,50 @@ df.fillna(df.mean(), inplace=True)
 x = df.drop(['Id', 'Class', 'EJ'], axis=1)
 y = df['Class']
 
-# Split the data into training and testing sets
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, stratify=y, random_state=0)
+# Scale the data using StandardScaler
+scaler = StandardScaler()
+x_scaled = scaler.fit_transform(x)
 
 # Define the model architecture
-model = Sequential() 
+model = Sequential()
 model.add(Dense(128, activation='relu', input_dim=len(x.columns)))
-model.add(Dense(1, activation='sigmoid')) 
-model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy']) 
+model.add(Dense(64, activation='relu'))
+model.add(Dense(32, activation='relu'))
+model.add(Dense(1, activation='sigmoid'))
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 model.summary()
 
-# Train the model
-hist = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=20, batch_size=100)
+# Perform KFold cross-validation
+kf = KFold(n_splits=5, random_state=0, shuffle=True)
+
+best_val_loss = float('inf')
+best_epoch = 0
+
+for train_index, val_index in kf.split(x_scaled):
+    x_train, x_val = x_scaled[train_index], x_scaled[val_index]
+    y_train, y_val = y[train_index], y[val_index]
+
+    # Define the model architecture
+    model = Sequential()
+    model.add(Dense(128, activation='relu', input_dim=len(x.columns)))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    
+    # Define early stopping callback
+    early_stopping = EarlyStopping(monitor='val_loss', patience=10, mode='min', restore_best_weights=True)
+
+    # Train the model
+    hist = model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=100, batch_size=100, callbacks=[early_stopping])
+    
+    # Track the best epoch based on validation loss
+    if np.min(hist.history['val_loss']) < best_val_loss:
+        best_val_loss = np.min(hist.history['val_loss'])
+        best_epoch = np.argmin(hist.history['val_loss']) + 1
+
+# Train the final model with the best epoch
+model.fit(x_scaled, y, epochs=best_epoch, batch_size=100)
 
 # Print training accuracy
 print(hist.history['accuracy'])
@@ -73,45 +126,23 @@ plt.ylabel('Accuracy')
 plt.legend(loc='lower right')
 plt.show()
 
-# Predict labels for the test data
-y_predicted = model.predict(x_test) > 0.5
-
-# Create a confusion matrix
-mat = confusion_matrix(y_test, y_predicted)
-labels = ['diagnosable', 'not diagnosable']
-
-# Plot the confusion matrix
-sns.heatmap(mat, square=True, annot=True, fmt='d', cbar=False, cmap='Blues',
-            xticklabels=labels, yticklabels=labels)
-plt.xlabel('Predicted label')
-plt.ylabel('Actual label')
-
-
-# Read the test data from a CSV file
+# Load the test data
 test_df = pd.read_csv("/kaggle/input/icr-identify-age-related-conditions/test.csv")
 
 # Fill missing values with the mean
 test_df.fillna(df.mean(), inplace=True)
 
-# Extract the features (input data) from the test data
-test_x = test_df.drop(['Id', 'EJ'], axis=1)
+# Scale the test data using StandardScaler
+test_x_scaled = scaler.transform(test_df.drop(['Id', 'EJ'], axis=1))
 
-# Predict the labels for the test data using the trained model
-predictions = model.predict(test_x) 
+# Predict the probabilities for the test data using the trained model
+probabilities = model.predict(test_x_scaled)
 
-# Print the predicted labels
-print(predictions)
+# Round the probabilities to one decimal place
+rounded_probabilities = np.round(probabilities, 1)
 
-# Round the probability values to one decimal place
-rounded_predictions = np.round(predictions.flatten(), decimals=1)
-rounded_class_0 = np.round(1 - predictions.flatten(), decimals=1)
-
-# Create a DataFrame for the rounded predictions
-#pred_df = pd.DataFrame({'Id': test_df['Id'], 'class_0': rounded_class_0, 'class_1': rounded_predictions})
-#Implementing suggested solution for how to write submission file
+# Create a DataFrame for the predictions
 sample = pd.read_csv('/kaggle/input/icr-identify-age-related-conditions/sample_submission.csv')
-sample['class_1'] = rounded_predictions
-sample['class_0'] = rounded_class_0
-sample.to_csv('submission.csv', index = False)
-# Write the predictions to a CSV file
-#pred_df.to_csv('submission.csv', index=False)
+sample['class_1'] = rounded_probabilities
+sample['class_0'] = 1 - rounded_probabilities
+sample.to_csv('submission.csv', index=False)
