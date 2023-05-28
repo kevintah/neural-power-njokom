@@ -155,6 +155,9 @@ probabilities = model.predict(test_x_scaled)
 # Clip the predicted probabilities
 probabilities = np.clip(probabilities, 1e-15, 1 - 1e-15)
 
+# Rescale the probabilities
+probabilities /= probabilities.sum(axis=1, keepdims=True)
+
 # Create a DataFrame for the predictions
 sample = pd.read_csv('/kaggle/input/icr-identify-age-related-conditions/sample_submission.csv')
 sample['class_1'] = probabilities[:, 1]  # Probability for class 1
