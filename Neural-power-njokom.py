@@ -44,6 +44,8 @@ from keras.callbacks import EarlyStopping
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
+from keras.utils import to_categorical
+import keras.backend as K
 
 # Read the CSV file into a DataFrame
 df = pd.read_csv("/kaggle/input/icr-identify-age-related-conditions/train.csv")
@@ -56,6 +58,9 @@ df.fillna(df.mean(), inplace=True)
 x = df.drop(['Id', 'Class', 'EJ'], axis=1)
 y = df['Class']
 
+# Convert labels to one-hot encoded vectors
+y_one_hot = to_categorical(y, num_classes=2)
+
 # Scale the data using StandardScaler
 scaler = StandardScaler()
 x_scaled = scaler.fit_transform(x)
@@ -65,8 +70,17 @@ model = Sequential()
 model.add(Dense(128, activation='relu', input_dim=len(x.columns)))
 model.add(Dense(64, activation='relu'))
 model.add(Dense(32, activation='relu'))
-model.add(Dense(1, activation='sigmoid'))
-model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.add(Dense(2, activation='sigmoid'))  # Change the number of units to 2
+
+# Define the custom loss function
+def balanced_log_loss(y_true, y_pred):
+    y_pred = K.clip(y_pred, K.epsilon(), 1 - K.epsilon())
+    class_0_loss = -K.mean(y_true[:, 0] * K.log(y_pred[:, 0]))
+    class_1_loss = -K.mean(y_true[:, 1] * K.log(y_pred[:, 1]))
+    return (class_0_loss + class_1_loss) / 2
+
+# Compile the model with the balanced logarithmic loss
+model.compile(loss=balanced_log_loss, optimizer='adam', metrics=['accuracy'])
 model.summary()
 
 # Perform KFold cross-validation
@@ -77,15 +91,15 @@ best_epoch = 0
 
 for train_index, val_index in kf.split(x_scaled):
     x_train, x_val = x_scaled[train_index], x_scaled[val_index]
-    y_train, y_val = y[train_index], y[val_index]
+    y_train, y_val = y_one_hot[train_index], y_one_hot[val_index]
 
     # Define the model architecture
     model = Sequential()
     model.add(Dense(128, activation='relu', input_dim=len(x.columns)))
     model.add(Dense(64, activation='relu'))
     model.add(Dense(32, activation='relu'))
-    model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    model.add(Dense(2, activation='sigmoid'))  # Change the number of units to 2
+    model.compile(loss=balanced_log_loss, optimizer='adam', metrics=['accuracy'])
     
     # Define early stopping callback
     early_stopping = EarlyStopping(monitor='val_loss', patience=10, mode='min', restore_best_weights=True)
@@ -99,7 +113,7 @@ for train_index, val_index in kf.split(x_scaled):
         best_epoch = np.argmin(hist.history['val_loss']) + 1
 
 # Train the final model with the best epoch
-model.fit(x_scaled, y, epochs=best_epoch, batch_size=100)
+model.fit(x_scaled, y_one_hot, epochs=best_epoch, batch_size=100)
 
 # Print training accuracy
 print(hist.history['accuracy'])
@@ -138,8 +152,11 @@ test_x_scaled = scaler.transform(test_df.drop(['Id', 'EJ'], axis=1))
 # Predict the probabilities for the test data using the trained model
 probabilities = model.predict(test_x_scaled)
 
+# Clip the predicted probabilities
+probabilities = np.clip(probabilities, 1e-15, 1 - 1e-15)
+
 # Create a DataFrame for the predictions
 sample = pd.read_csv('/kaggle/input/icr-identify-age-related-conditions/sample_submission.csv')
-sample['class_1'] = probabilities
-sample['class_0'] = 1 - probabilities
+sample['class_1'] = probabilities[:, 1]  # Probability for class 1
+sample['class_0'] = probabilities[:, 0]  # Probability for class 0
 sample.to_csv('submission.csv', index=False)
