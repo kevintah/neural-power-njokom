@@ -138,11 +138,8 @@ test_x_scaled = scaler.transform(test_df.drop(['Id', 'EJ'], axis=1))
 # Predict the probabilities for the test data using the trained model
 probabilities = model.predict(test_x_scaled)
 
-# Round the probabilities to one decimal place
-rounded_probabilities = np.round(probabilities, 1)
-
 # Create a DataFrame for the predictions
 sample = pd.read_csv('/kaggle/input/icr-identify-age-related-conditions/sample_submission.csv')
-sample['class_1'] = rounded_probabilities
-sample['class_0'] = 1 - rounded_probabilities
+sample['class_1'] = probabilities
+sample['class_0'] = 1 - probabilities
 sample.to_csv('submission.csv', index=False)
